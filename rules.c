@@ -15,6 +15,7 @@
 #include <sys/capability.h>
 #include <sys/mount.h>
 #include <sys/quota.h>
+#include <sys/syscall.h>
 #include <sys/stat.h>
 #include <sys/vfs.h>
 #include <unistd.h>
@@ -485,8 +486,8 @@ find_device(char *path)
   char *best_dev = NULL;
   while (me = getmntent(f))
     {
-      if (!path_begins_with(me->mnt_fsname, "/dev"))
-	continue;
+//      if (!path_begins_with(me->mnt_fsname, "/dev"))
+//	continue;
       if (path_begins_with(path, me->mnt_dir))
 	{
 	  int len = strlen(me->mnt_dir);
@@ -512,6 +513,11 @@ set_quota(void)
   if (!getcwd(cwd, sizeof(cwd)))
     die("getcwd: %m");
 
+  int cwd_fd = open(cwd, O_DIRECTORY | O_PATH);
+  if(cwd_fd < 0)
+    die("open: %m");
+
+  /*
   char *dev = find_device(cwd);
   if (!dev)
     die("Cannot identify filesystem which contains %s", cwd);
@@ -527,7 +533,7 @@ set_quota(void)
     die("Cannot stat cwd: %m");
   if (cwd_st.st_dev != dev_st.st_rdev)
     die("Identified %s as a filesystem on %s, but it is obviously false", cwd, dev);
-
+*/
   struct dqblk dq = {
     .dqb_bhardlimit = block_quota,
     .dqb_bsoftlimit = block_quota,
@@ -535,9 +541,11 @@ set_quota(void)
     .dqb_isoftlimit = inode_quota,
     .dqb_valid = QIF_LIMITS,
   };
-  if (quotactl(QCMD(Q_SETQUOTA, USRQUOTA), dev, box_uid, (caddr_t) &dq) < 0)
+  //if (quotactl(QCMD(Q_SETQUOTA, USRQUOTA), dev, box_uid, (caddr_t) &dq) < 0)
+  if (syscall(SYS_quotactl_fd, cwd_fd, QCMD(Q_SETQUOTA, USRQUOTA), box_uid, (caddr_t) &dq) < 0)
     die("Cannot set disk quota: %m");
   msg("Quota: Set block quota %d and inode quota %d\n", block_quota, inode_quota);
 
-  free(dev);
+  //free(dev);
+  close(cwd_fd);
 }
